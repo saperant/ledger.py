@@ -27,14 +27,12 @@ import dateutil.parser
 from collections import defaultdict, namedtuple
 import xlwt
 import os
+import locale
 
 # {{{ Deal with columns of text
 
 def join_columns(seq_of_seq_of_strings, separator=' '):
-    result = []
-    for row in seq_of_seq_of_strings:
-        result += [separator.join(row)]
-    return result
+    return [separator.join(row) for row in seq_of_seq_of_strings]
 
 def justify_columns(seq_of_seq_of_strings, justification):
     """Justify strings in sequence of sequences so each column has equal length.
@@ -48,14 +46,11 @@ def justify_columns(seq_of_seq_of_strings, justification):
 
     Assumes each inner sequence has same # of components."""
 
-    ## XXX: *just_col* need rewriting to remove duplicate code
-    if (len(seq_of_seq_of_strings) == 0):
+    if not seq_of_seq_of_strings:
         return seq_of_seq_of_strings
-    for column in range(len(justification)):
-        if justification[column].upper() == "L":
-            seq_of_seq_of_strings = ljust_column(seq_of_seq_of_strings, column)
-        if justification[column].upper() == "R":
-            seq_of_seq_of_strings = rjust_column(seq_of_seq_of_strings, column)
+    funcs = {"r": rjust_column, "l": ljust_column}
+    for column, just in enumerate(justification):
+        seq_of_seq_of_strings = funcs[just.lower()](seq_of_seq_of_strings, column)
     return seq_of_seq_of_strings
 
 def rjust_column(seq_of_seq_of_strings, column):
@@ -67,11 +62,10 @@ def rjust_column(seq_of_seq_of_strings, column):
 
     Assumes each inner sequence has same # of components."""
 
-    ## XXX: ljust_col*, rjust_col* need rewriting to remove duplicate code
-    if (len(seq_of_seq_of_strings) == 0):
+    if not seq_of_seq_of_strings:
         return seq_of_seq_of_strings
-    # else
-    ## Make copy where inner sequences are lists, so we can modify them
+
+    # Make copy where inner sequences are lists, so we can modify them
     seq_of_seq_of_strings = [list(row) for row in seq_of_seq_of_strings]
     max_len = max([len(row[column]) for row in seq_of_seq_of_strings])
     for row in range(len(seq_of_seq_of_strings)):
@@ -87,11 +81,10 @@ def ljust_column(seq_of_seq_of_strings, column):
 
     Assumes each inner sequence has same # of components."""
 
-    ## XXX: ljust_col*, rjust_col* need rewriting to remove duplicate code
-    if (len(seq_of_seq_of_strings) == 0):
+    if not seq_of_seq_of_strings:
         return seq_of_seq_of_strings
-    # else
-    ## Make copy where inner sequences are lists, so we can modify them
+
+    # Make copy where inner sequences are lists, so we can modify them
     seq_of_seq_of_strings = [list(row) for row in seq_of_seq_of_strings]
     max_len = max([len(row[column]) for row in seq_of_seq_of_strings])
     for row in range(len(seq_of_seq_of_strings)):
@@ -107,7 +100,17 @@ def ljust_column(seq_of_seq_of_strings, column):
 ### Maybe not even good for AUD. Should really be using a the decimal
 ### module for this.
 
-DEFAULT_UNITS = 'AUD'
+locale.setlocale(locale.LC_ALL, 'fi_FI.UTF-8')
+#locale.setlocale(locale.LC_ALL, 'en_AU.UTF-8')
+
+LOCALECONV = locale.localeconv()
+lconv_decimal_point = LOCALECONV.get('mon_decimal_point') or LOCALECONV.get('decimal_point')
+lconv_thousands_sep = LOCALECONV.get('mon_thousands_sep') or LOCALECONV.get('thousands_sep')
+lconv_currency_symbol = LOCALECONV.get('currency_symbol')
+lconv_frac_digits = LOCALECONV.get('frac_digits')
+lconv_positive_sign = LOCALECONV.get('positive_sign')
+lconv_negative_sign = LOCALECONV.get('negative_sign')
+DEFAULT_UNITS = LOCALECONV.get('int_curr_symbol').strip()
 
 def parse_amount(amount_string):
     "Convert amount_string to a unit/currency and signed quantity."
@@ -116,19 +119,24 @@ def parse_amount(amount_string):
     if amount_string == "-":
         return {}
 
-    table = str.maketrans(dict.fromkeys("$,"))
-    quantity = int(round(float(amount_string.translate(table)) * 100.0))
+    cleanup_list = ''.join([' ', lconv_thousands_sep, lconv_currency_symbol, lconv_positive_sign])
+    from_list = ''.join([lconv_negative_sign, lconv_decimal_point])
+    to_list = ''.join(['-', '.'])
 
-    return {'units': 'AUD',
+    cleanup_table = str.maketrans(from_list, to_list, cleanup_list)
+    tmp = amount_string.translate(cleanup_table)
+
+    quantity = int(round(float(tmp) * (10 ** lconv_frac_digits), 2))
+    return {'units': DEFAULT_UNITS,
             'quantity': quantity}
 
 def parse_amount_adjusting_sign(account_string, amount_string):
     "Parse amount_string, adjust sign depending on account_string."
 
-    quantity = int(round(float(amount_string.translate(None, "$,")) * 100.0))
+    quantity = parse_amount(amount_string)
     quantity *= sign_account(account_string)
 
-    return {'units': 'AUD',
+    return {'units': DEFAULT_UNITS,
             'quantity': quantity}
 
 def format_amount(amount):
@@ -140,14 +148,9 @@ def format_amount(amount):
 
     units = amount['units']
     quantity = amount['quantity']
-
-    if units == 'AUD':
-        if quantity >= 0:
-            return "${0:,.2f}".format(quantity/100.0)
-        else:
-            return "-${0:,.2f}".format(-quantity/100.0)
-    #else:
-    raise Exception('Unknown unit in format_amount:', units)
+    if units != DEFAULT_UNITS.strip():
+        raise NotImplementedError("Mixing of currency units is not supported")
+    return locale.currency(quantity / (10.0 ** lconv_frac_digits))
 
 def extract_single_unit_amount(amounts):
     "Given a set of amounts, make sure there is exactly one currency/unit present and return that amount."
