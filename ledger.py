@@ -28,6 +28,15 @@ from collections import defaultdict, namedtuple
 import xlwt
 import os
 import locale
+import i18n
+
+i18n.load_path.append('i18n')
+i18n.set('locale', 'fi')
+
+def localize(s:str):
+    #print(s)
+    return i18n.t(f'foo.{s}')
+_ = localize
 
 # {{{ Deal with columns of text
 
@@ -100,7 +109,8 @@ def ljust_column(seq_of_seq_of_strings, column):
 ### Maybe not even good for AUD. Should really be using a the decimal
 ### module for this.
 
-locale.setlocale(locale.LC_ALL, 'fi_FI.UTF-8')
+locale.setlocale(locale.LC_ALL, locale.getlocale())
+#locale.setlocale(locale.LC_ALL, 'fi_FI.UTF-8')
 #locale.setlocale(locale.LC_ALL, 'en_AU.UTF-8')
 
 LOCALECONV = locale.localeconv()
@@ -207,16 +217,16 @@ def root_account_name(account_string):
     treat 'revenue' or 'revenues' accounts as 'income' accounts."""
     root = account_string.split(':')[0]
     root = root.upper()
-    if (root == "EXPENSE"):
-        return "EXPENSES"
-    if (root == "ASSET"):
-        return "ASSETS"
-    if (root == "LIABILITY"):
-        return "LIABILITIES"
-    if (root == "REVENUE"):
-        return "INCOME"
-    if (root == "REVENUES"):
-        return "INCOME"
+    if (root == _("EXPENSE")):
+        return _("EXPENSES")
+    if (root == _("ASSET")):
+        return _("ASSETS")
+    if (root == _("LIABILITY")):
+        return _("LIABILITIES")
+    if (root == _("REVENUE")):
+        return _("INCOME")
+    if (root == _("REVENUES")):
+        return _("INCOME")
     return root
 
 def sign_account(account_string):
@@ -247,11 +257,12 @@ def sign_account(account_string):
     balance because the Assets and Expenses accounts have the same
     signs (+1, and +1)."""
 
-    account_sign_dict = {'ASSETS': 1,
-                         'LIABILITIES' : -1,
-                         'INCOME' : -1,
-                         'EXPENSES' : 1,
-                         'EQUITY': -1}
+    account_sign_dict = {_('ASSETS'): 1,
+                         _('LIABILITIES') : -1,
+                         _('INCOME') : -1,
+                         _('EXPENSES') : 1,
+                         _('EQUITY'): -1}
+    print(account_sign_dict, _('ASSETS'))
     return account_sign_dict[root_account_name(account_string)]
 
 def is_valid_account_string(account_string):
